@@ -235,6 +235,9 @@ PrimaryOpcodeHandlerFn PrimaryOpcodeMap[0xFF] =
     [0x8C] = PrimaryOpcodeMovHandler
 };
 
+
+
+
 typedef unsigned long long(*PrefixHandlerFn)( unsigned char* Data, unsigned int* Index );
 
 unsigned long long 
@@ -259,30 +262,9 @@ RexPrefixHandler(
     return 0;
 }
 
-unsigned long long
-LegacyPrefixHandler(
-    unsigned char* Data,
-    unsigned int* Index
-)
-{
-    unsigned char NextByte = Data[ *(Index) + 1 ];
-    if( NextByte == 0x0F )
-    {
-        printf("Do not support decoding 3DNow! maps\n");
-    }
-    else if (NextByte == 0x38 || NextByte == 0x3A )
-    {
-        printf("Do not support decoding SEE maps\n");
-    }
-    return 0;
-}
-
-// there are three two-byte legacy sequences: 0F 0F, 0F 38 and 0F 3A. 0F 0F is for 3DNow!
-// 0F 38 and 0F 3A are used to encode extended instructions (SEE) maps.
 
 static PrefixHandlerFn PrefixHandler[0xFF] =
 {
-    [0x0F] = LegacyPrefixHandler,
     [0x40] = RexPrefixHandler,
     [0x41] = RexPrefixHandler,
     [0x42] = RexPrefixHandler,
@@ -298,10 +280,7 @@ static PrefixHandlerFn PrefixHandler[0xFF] =
     [0x4C] = RexPrefixHandler,
     [0x4D] = RexPrefixHandler,
     [0x4E] = RexPrefixHandler,
-    [0x4F] = RexPrefixHandler,
-    [0x66] = LegacyPrefixHandler,
-    [0x67] = LegacyPrefixHandler
-   
+    [0x4F] = RexPrefixHandler
 };
 
 void
@@ -322,7 +301,9 @@ x86Dism(
 
         if( Handler == NULL )
         {
-           
+            printf("Invalid prefix 0x%x\n", CurrentByte);
+            Index++;
+            continue;
         }
 
 
