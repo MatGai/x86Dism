@@ -147,7 +147,7 @@ const char* SibAndModOperandEncoding[32] =
         "[rDX]",        // 010b
         "[rBX]",        // 011b
         "SIB",          // 100b  sib follows modrm, address is scaled_index + base when base = 101b. addressing depends on modrm.mod
-        "Disp32",       // 101b  
+        "rIP+Disp32",       // 101b  
         "[rSI]",        // 110b
         "[rDI]",        // 111b
         // ModRM.Mod == 01b
@@ -219,6 +219,27 @@ typedef enum _OPCODE_GROUP
     OPCODE_GROUP_SEVEN
 } OPCODE_GROUP, *POPCODE_GROUP;
 
+typedef union _INSTRUCTION_OPERANDS
+{
+    const char* Value[ 4 ];
+    struct
+    {
+        const char* One;
+        const char* Two;
+        const char* Three;
+        const char* Four;
+    };
+} INSTRUCTION_OPERANDS, * PINSTRUCTION_OPERANDS;
+
+typedef struct _MNEMONIC_DESCRIPTOR
+{
+    unsigned char* Name;
+    OPCODE_GROUP Group;
+    unsigned int OperandAmount;
+    INSTRUCTION_OPERANDS Operands;
+    void* Callback;
+} MNEMONIC_DESCRIPTOR, *PMNEMONIC_DESCRIPTOR;
+
 typedef struct _OPCODE_DESCRIPTOR
 {
     unsigned char Length;
@@ -226,13 +247,13 @@ typedef struct _OPCODE_DESCRIPTOR
     unsigned char Register;
 } OPCODE_DESCRIPTOR, * PPREFIX_DESCRIPTOR;
 
-PrimaryOpcodeHandlerFn PrimaryOpcodeMap[0xFF] =
+MNEMONIC_DESCRIPTOR PrimaryOpcodeMap[0xFF] =
 {
-    [0x88] = PrimaryOpcodeMovHandler,
-    [0x89] = PrimaryOpcodeMovHandler,
-    [0x8A] = PrimaryOpcodeMovHandler,
-    [0x8B] = PrimaryOpcodeMovHandler,
-    [0x8C] = PrimaryOpcodeMovHandler
+    [0x88] = { "Mov", OPCODE_GROUP_ONE, 2, { "r/m8", "r8", NULL, NULL }, (void*)PrimaryOpcodeMovHandler },
+    [0x89] = { "Mov", OPCODE_GROUP_ONE, 2, { "r/m64", "r64", NULL, NULL }, (void*)PrimaryOpcodeMovHandler },
+    [0x8A] = { "Mov", OPCODE_GROUP_ONE, 2, { "r8", "r/m8", NULL, NULL }, (void*)PrimaryOpcodeMovHandler },
+    [0x8B] = { "Mov", OPCODE_GROUP_ONE, 2, { "r64", "r/m64", NULL, NULL }, (void*)PrimaryOpcodeMovHandler },
+    [0x8C] = { "Mov", OPCODE_GROUP_ONE, 2, { "r64/m16", "Sreg", NULL, NULL }, (void*)PrimaryOpcodeMovHandler }
 };
 
 typedef unsigned long long(*PrefixHandlerFn)( unsigned char* Data, unsigned int* Index );
@@ -243,6 +264,7 @@ RexPrefixHandler(
     unsigned int*  Index
 )
 {
+    // If a rex prefix is found, the opcode or first legcy escape sequence must be the next byte.
     REX_DESCRIPTOR RexPrefix = { .Value = Data[ *Index ]};
 
     if( RexPrefix.Reserved != 0x4 )
@@ -250,11 +272,36 @@ RexPrefixHandler(
         return 0;
     }
 
+
+    // since byte is rex, this must be a mnemonic or legacy prefix.
     (*Index)++;
-    PrimaryOpcodeMap[ Data[*Index] ]();
+    MNEMONIC_DESCRIPTOR Mnemonic = PrimaryOpcodeMap[ Data[*Index] ];
+
+    printf( "%s ", Mnemonic.Name );
+
+    for (int Index = 0; Index < Mnemonic.OperandAmount; ++Index)
+    {
+        printf("%s ", Mnemonic.Operands.Value[ Index ]);
+    }
+
+   printf( "\n");
 
     (*Index)++;
     MODRM_DESCRIPTOR ModRmPrefix = { .Value = Data[ *Index ] };
+
+    INSTRUCTION_OPERANDS Operands;
+
+    if (RexPrefix.W)
+    {
+        Operands.One = ModRmRegEncoding[ ModRmPrefix.Reg ];
+        Operands.Two = SibAndModOperandEncoding[ 8 * ModRmPrefix.Mod + ModRmPrefix.Rm ];
+        for (int Index = 0; Index < Mnemonic.OperandAmount; ++Index)
+        {
+            printf("%s ", Operands.Value[Index]);
+        }
+
+        printf("\n");
+    }
 
     return 0;
 }
@@ -304,6 +351,13 @@ static PrefixHandlerFn PrefixHandler[0xFF] =
    
 };
 
+
+//todo: implement
+unsigned long long
+DecodePrefix(
+
+);
+
 void
 x86Dism(
     unsigned char* Data,
@@ -320,9 +374,12 @@ x86Dism(
         
         PrefixHandlerFn Handler = PrefixHandler[ CurrentByte ];
 
+
         if( Handler == NULL )
         {
-           
+            // TODO: if not prefix need to assume it is opcode and decode
+            Index++;
+            continue;
         }
 
 
